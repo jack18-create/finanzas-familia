@@ -1,6 +1,15 @@
 import sqlite3, json, os, datetime, yaml
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "budget.db")
+# === RUTA DE LA BASE DE DATOS (local o Render) ==============================
+# Si existe la variable de entorno BUDGET_DB (ej: "/data/budget.db" en Render),
+# la usamos. Si no, guardamos "budget.db" junto al código (modo local).
+DB_PATH = os.environ.get("BUDGET_DB", os.path.join(os.path.dirname(__file__), "budget.db"))
+
+# Crea la carpeta del DB si no existe (útil cuando DB_PATH es /data/budget.db)
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+# ============================================================================
+
 YAML_PATH = os.path.join(os.path.dirname(__file__), "budgets.yaml")
 
 def get_conn():
@@ -163,6 +172,12 @@ def incomes_for_user(user, limit=20):
     rows = c.execute("""
         SELECT amount, ts, note FROM incomes
         WHERE user=?
+        ORDER BY ts DESC
+        LIMIT ?
+    """, (user, limit)).fetchall()
+    conn.close()
+    return rows
+
         ORDER BY ts DESC
         LIMIT ?
     """, (user, limit)).fetchall()
