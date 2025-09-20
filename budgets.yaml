@@ -1,0 +1,74 @@
+categories:
+  - key: arriendo
+    name: Arriendo
+    type: shared
+    limit_total: 250000
+    shares:
+      Jack: 0.5
+      Jasmin: 0.5
+
+  - key: comida
+    name: Comida
+    type: shared
+    limit_total: 100000
+    shares:
+      Jack: 0.5
+      Jasmin: 0.5
+
+  - key: emergencia
+    name: Emergencia
+    type: shared
+    limit_total: 50000
+    shares:
+      Jack: 0.5
+      Jasmin: 0.5
+
+  - key: internet_hogar
+    name: Internet hogar
+    type: shared
+    limit_total: 17502
+    shares:
+      Jack: 0.5
+      Jasmin: 0.5
+
+  - key: ahorro_jack
+    name: Ahorro
+    type: individual
+    limit_total: 200000
+    owner: Jack
+
+  - key: ropa_calzado_jack
+    name: Ropa/calzado
+    type: individual
+    limit_total: 100000
+    owner: Jack
+
+  - key: paseos_jack
+    name: Paseos
+    type: individual
+    limit_total: 100000
+    owner: Jack
+
+  - key: ahorro_jasmin
+    name: Ahorro
+    type: individual
+    limit_total: 200000
+    owner: Jasmin
+
+  - key: ropa_calzado_jasmin
+    name: Ropa/calzado
+    type: individual
+    limit_total: 100000
+    owner: Jasmin
+
+  - key: paseos_jasmin
+    name: Paseos
+    type: individual
+    limit_total: 100000
+    owner: Jasmin
+
+  - key: mandar_hijo_jasmin
+    name: Mandar hijo
+    type: individual
+    limit_total: 100000
+    owner: Jasmin
