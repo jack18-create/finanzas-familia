@@ -161,25 +161,25 @@ def add_income(user, amount, note=""):
     conn = get_conn()
     c = conn.cursor()
     ts = datetime.datetime.now().isoformat(timespec="seconds")
-    c.execute("INSERT INTO incomes(user, amount, ts, note) VALUES(?,?,?,?)",
-              (user, int(amount), ts, note))
+    c.execute(
+        "INSERT INTO incomes(user, amount, ts, note) VALUES(?,?,?,?)",
+        (user, int(amount), ts, note),
+    )
     conn.commit()
     conn.close()
 
 def incomes_for_user(user, limit=20):
     conn = get_conn()
     c = conn.cursor()
-    rows = c.execute("""
-        SELECT amount, ts, note FROM incomes
-        WHERE user=?
+    rows = c.execute(
+        """
+        SELECT amount, ts, note
+        FROM incomes
+        WHERE user = ?
         ORDER BY ts DESC
         LIMIT ?
-    """, (user, limit)).fetchall()
-    conn.close()
-    return rows
-
-        ORDER BY ts DESC
-        LIMIT ?
-    """, (user, limit)).fetchall()
+        """,
+        (user, int(limit)),
+    ).fetchall()
     conn.close()
     return rows
