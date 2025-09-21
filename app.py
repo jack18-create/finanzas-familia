@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import json
+import re
 
 from db import (
     init_db, ensure_users, load_templates_from_yaml, ensure_budgets_for_month,
@@ -9,7 +10,43 @@ from db import (
 )
 from utils import fmt_clp, proportional_allocate, progress_of_row
 
-# --- Inicialización de datos/mes ---
+# =======================
+#  Helpers de dinero y shares
+# =======================
+def parse_money(s: str) -> int:
+    """Convierte '$200.000', '200000', '200,000' -> 200000 (int)."""
+    if not s:
+        return 0
+    digits = re.sub(r"[^\d]", "", s)
+    return int(digits) if digits else 0
+
+def money_input(label: str, key: str, default: int = 0) -> int:
+    """
+    Input de texto 'tipo moneda' que acepta $ y puntos.
+    Muestra debajo el valor interpretado con formato CLP.
+    """
+    default_str = st.session_state.get(key + "_display", fmt_clp(default))
+    s = st.text_input(label, value=default_str, key=key + "_display")
+    val = parse_money(s)
+    st.caption(f"Interpretado: **{fmt_clp(val)}**")
+    return val
+
+def share_to_fraction(v) -> float:
+    """
+    Acepta 50 o '50%' -> 0.5 ; acepta 0.5 -> 0.5.
+    Si no se puede parsear, retorna 0.5.
+    """
+    try:
+        if isinstance(v, str):
+            v = v.strip().replace("%", "")
+        val = float(v)
+    except Exception:
+        return 0.5
+    return val if val <= 1 else (val / 100.0)
+
+# =======================
+#  Inicialización
+# =======================
 init_db()
 ensure_users()
 load_templates_from_yaml()
@@ -59,9 +96,10 @@ st.write("Registra ingresos, distribuye automáticamente por categorías y sigue
 with st.expander("➕ Registrar ingreso y distribuir automáticamente", expanded=True):
     col1, col2, col3 = st.columns([2, 1, 2])
     with col1:
-        amount = st.number_input(
+        amount = money_input(
             "Monto recibido (CLP). Puede ser sueldo, quincena o cualquier ingreso.",
-            min_value=0, step=1000, value=0
+            key="ingreso_monto",
+            default=0,
         )
     with col2:
         tipo = st.selectbox("Tipo", ["Sueldo", "Quincena", "Otro"], index=1)
@@ -110,12 +148,13 @@ with tabs[0]:
             shares = json.loads(shares_json) if shares_json else {}
         except Exception:
             shares = {}
-        jack_pct   = float(shares.get("Jack", 50)) / 100.0
-        jasmin_pct = float(shares.get("Jasmin", 50)) / 100.0
+
+        jack_frac   = share_to_fraction(shares.get("Jack", 50))
+        jasmin_frac = share_to_fraction(shares.get("Jasmin", 50))
 
         # Topes individuales
-        tope_jack   = int(limit_total * jack_pct)
-        tope_jasmin = int(limit_total * jasmin_pct)
+        tope_jack   = int(round(limit_total * jack_frac))
+        tope_jasmin = int(round(limit_total * jasmin_frac))
 
         # Aportes realizados
         ap_jack   = sum_contribs_by_user(b_id, "Jack")
