@@ -91,7 +91,7 @@ st.title("💸 Finanzas Familiares — Jack & Jasmin")
 st.write("Registra ingresos, distribuye automáticamente por categorías y sigue el progreso de cada gasto.")
 
 # =======================
-#  Registrar y distribuir
+#  Registrar y distribuir (automático)
 # =======================
 with st.expander("➕ Registrar ingreso y distribuir automáticamente", expanded=True):
     col1, col2, col3 = st.columns([2, 1, 2])
@@ -123,6 +123,175 @@ with st.expander("➕ Registrar ingreso y distribuir automáticamente", expanded
                 st.dataframe(df, use_container_width=True)
                 if leftover > 0:
                     st.info(f"Saldo no asignado (metas completas): **{fmt_clp(leftover)}**")
+
+# =======================
+#  Distribución editable con rebalance
+# =======================
+def build_plan_for_user(user: str, month: str):
+    """
+    Devuelve la lista de categorías visibles para el usuario con su capacidad
+    restante (lo que falta para completar su tope personal este mes).
+    """
+    plan = []
+    rows = list_budgets(month)  # (id, tkey, name, ctype, owner, limit_total, shares_json)
+    for r in rows:
+        b_id, tkey, name, ctype, owner, limit_total, shares_json = r
+
+        # Solo veo compartidas y mis individuales
+        if ctype == "shared" or (ctype == "individual" and owner == user):
+            # tope personal
+            if ctype == "shared":
+                try:
+                    shares = json.loads(shares_json) if shares_json else {}
+                except Exception:
+                    shares = {}
+                frac = share_to_fraction(shares.get(user, 50))
+                personal_cap = int(round(limit_total * frac))
+            else:
+                personal_cap = int(limit_total)
+
+            ya_aportado = sum_contribs_by_user(b_id, user)
+            restante = max(0, personal_cap - ya_aportado)
+            if restante > 0:
+                plan.append({
+                    "id": b_id,
+                    "name": name + (" (comp.)" if ctype == "shared" else ""),
+                    "capacity": restante
+                })
+    return plan
+
+def suggest_by_capacity(plan, total: int):
+    """
+    Sugerencia proporcional (capada por capacidad) para un total dado.
+    Devuelve lista de ints y posible 'leftover' si ya no hay dónde poner.
+    """
+    if total <= 0 or not plan:
+        return [0]*len(plan), total
+
+    caps = [p["capacity"] for p in plan]
+    cap_total = sum(caps)
+    if cap_total == 0:
+        return [0]*len(plan), total
+
+    # Proporcional
+    raw = [total * c / cap_total for c in caps]
+    alloc = [min(int(round(x)), caps[i]) for i, x in enumerate(raw)]
+
+    # Ajuste por redondeo/caps
+    diff = total - sum(alloc)
+    i = 0
+    while diff != 0 and i < 10000:  # tope de seguridad
+        for j in range(len(alloc)):
+            if diff == 0:
+                break
+            if diff > 0 and alloc[j] < caps[j]:
+                alloc[j] += 1
+                diff -= 1
+            elif diff < 0 and alloc[j] > 0:
+                alloc[j] -= 1
+                diff += 1
+        i += 1
+
+    leftover = max(0, total - sum(alloc))
+    return alloc, leftover
+
+with st.expander("✏️ Distribuir manualmente con rebalance", expanded=False):
+    manual_total = money_input("Monto a distribuir (CLP)", key="manual_monto", default=0)
+    tipo2 = st.selectbox("Tipo de ingreso", ["Sueldo", "Quincena", "Otro"], index=1, key="manual_tipo")
+    nota2 = st.text_input("Nota (opcional)", value="", key="manual_nota")
+
+    plan = build_plan_for_user(username, month)
+
+    if not plan:
+        st.info("No hay categorías con capacidad disponible para este mes.")
+    else:
+        # Sugerencia inicial
+        sugg, _ = suggest_by_capacity(plan, manual_total)
+
+        base_df = pd.DataFrame([{
+            "ID": p["id"],
+            "Categoría": p["name"],
+            "Capacidad": p["capacity"],
+            "Asignar": sugg[i],
+            "Fijar": False
+        } for i, p in enumerate(plan)])
+
+        st.write("Marca **Fijar** en las filas que no quieres que cambien al rebalancear.")
+        with st.form("manual_edit_form"):
+            edit_df = st.data_editor(
+                base_df,
+                num_rows="fixed",
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "ID": st.column_config.TextColumn("ID", disabled=True),
+                    "Capacidad": st.column_config.NumberColumn("Capacidad", disabled=True, format="%d"),
+                    "Asignar": st.column_config.NumberColumn(
+                        "Asignar", min_value=0, step=1000, format="%d",
+                        help="Puedes escribir el monto. No debe superar la capacidad."
+                    ),
+                    "Fijar": st.column_config.CheckboxColumn("Fijar")
+                },
+            )
+            submitted = st.form_submit_button("🔁 Rebalancear y aplicar")
+
+        if submitted:
+            if manual_total <= 0:
+                st.warning("Ingresa un monto mayor que cero.")
+                st.stop()
+
+            # Limpia y recorta por capacidad
+            edit_df["Asignar"] = edit_df[["Asignar", "Capacidad"]].min(axis=1)
+            edit_df["Asignar"] = edit_df["Asignar"].clip(lower=0)
+
+            # Suma de filas fijadas
+            fixed_mask = edit_df["Fijar"] == True
+            fixed_sum = int(edit_df.loc[fixed_mask, "Asignar"].sum())
+
+            if fixed_sum > manual_total:
+                st.error(
+                    f"Las filas fijadas suman {fmt_clp(fixed_sum)}, que es mayor al total {fmt_clp(manual_total)}. "
+                    "Baja algún valor o desmarca Fijar."
+                )
+                st.stop()
+
+            # Repartir el resto entre las NO fijadas, proporcional a su capacidad restante
+            free_df = edit_df.loc[~fixed_mask].copy()
+            free_total_target = manual_total - fixed_sum
+
+            # Si no hay libres, sólo se registran las fijadas
+            if free_df.empty:
+                final_df = edit_df.copy()
+            else:
+                caps = free_df["Capacidad"].tolist()
+                alloc, leftover = suggest_by_capacity(
+                    [{"capacity": c} for c in caps], free_total_target
+                )
+                free_df["Asignar"] = alloc
+                final_df = pd.concat([edit_df.loc[fixed_mask], free_df], ignore_index=True)
+
+            total_final = int(final_df["Asignar"].sum())
+
+            # Registrar ingreso + aportes
+            add_income(username, int(manual_total), f"{tipo2} - Manual editable - {nota2}".strip())
+            from db import add_contribution
+            applied_rows = 0
+            for _, row in final_df.iterrows():
+                val = int(row["Asignar"])
+                if val > 0:
+                    add_contribution(int(row["ID"]), username, val)
+                    applied_rows += 1
+
+            # Mostrar resultado
+            shown = final_df.copy()
+            shown["Asignar"] = shown["Asignar"].astype(int)
+            st.success(f"Aplicado: {applied_rows} aportes por un total de {fmt_clp(total_final)}.")
+            if total_final < manual_total:
+                st.info(f"No se pudo asignar {fmt_clp(manual_total - total_final)} porque ya no quedaba capacidad en las categorías.")
+            st.dataframe(
+                shown[["Categoría", "Capacidad", "Asignar", "Fijar"]].sort_values("Categoría"),
+                use_container_width=True, hide_index=True
+            )
 
 # =======================
 #  Tabs
@@ -250,3 +419,4 @@ with tabs[2]:
         st.info("Sin ingresos registrados aún.")
 
 st.caption("Edita límites en budgets.yaml. Cada nuevo mes se crea automáticamente con los límites configurados.")
+
