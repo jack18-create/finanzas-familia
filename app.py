@@ -125,7 +125,7 @@ with st.expander("➕ Registrar ingreso y distribuir automáticamente", expanded
                     st.info(f"Saldo no asignado (metas completas): **{fmt_clp(leftover)}**")
 
 # =======================
-#  Distribución editable con rebalance
+#  Distribución editable con rebalance (nuevo flujo)
 # =======================
 def build_plan_for_user(user: str, month: str):
     """
@@ -294,9 +294,9 @@ with st.expander("✏️ Distribuir manualmente con rebalance", expanded=False):
             )
 
 # =======================
-#  Tabs
+#  Tabs (sin 'Aportes manuales')
 # =======================
-tabs = st.tabs(["📊 Resumen", "🧾 Aportes manuales", "📜 Historial"])
+tabs = st.tabs(["📊 Resumen", "📜 Historial"])
 
 # -------- Resumen --------
 with tabs[0]:
@@ -381,32 +381,8 @@ with tabs[0]:
     else:
         st.info("No tienes categorías personales configuradas.")
 
-# -------- Aportes manuales --------
+# -------- Historial --------
 with tabs[1]:
-    st.subheader("Registrar aporte manual")
-    rows = list_budgets(month)
-
-    visible = []
-    for r in rows:
-        if r[3] == "shared":
-            visible.append(r)
-        elif r[3] == "individual" and r[4] == username:
-            visible.append(r)
-
-    if not visible:
-        st.info("No hay categorías disponibles.")
-    else:
-        labels = [f"{r[2]} {'(compartido)' if r[3]=='shared' else ''}" for r in visible]
-        selected = st.selectbox("Categoria", options=list(range(len(visible))), format_func=lambda i: labels[i])
-        amt = st.number_input("Monto a aportar (CLP)", min_value=0, step=1000)
-
-        if st.button("Agregar aporte"):
-            from db import add_contribution
-            add_contribution(visible[selected][0], username, int(amt))
-            st.success("Aporte agregado.")
-
-# -------- Historial de ingresos --------
-with tabs[2]:
     st.subheader("Tus últimos ingresos")
     rows = incomes_for_user(username, limit=50)
     if rows:
@@ -419,5 +395,6 @@ with tabs[2]:
         st.info("Sin ingresos registrados aún.")
 
 st.caption("Edita límites en budgets.yaml. Cada nuevo mes se crea automáticamente con los límites configurados.")
+
 
 
