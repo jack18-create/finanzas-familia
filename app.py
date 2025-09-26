@@ -420,3 +420,4 @@ with tabs[2]:
 
 st.caption("Edita límites en budgets.yaml. Cada nuevo mes se crea automáticamente con los límites configurados.")
 
+
